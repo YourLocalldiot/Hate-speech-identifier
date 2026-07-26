@@ -84,7 +84,7 @@ def predict(text):
 # Interface
 # =============================================================================
 
-st.title("💬 Hate Speech Detection")
+st.title("Hate Speech Detection")
 
 st.write(
     """
