@@ -89,6 +89,13 @@ def main():
         manual
     )
 
+    # Add a permanent unique ID for each sample
+    merged.insert(
+        0,
+        "dataset_row",
+        range(len(merged))
+    )
+
     save_dataset(
         merged,
         OUTPUT_FILE

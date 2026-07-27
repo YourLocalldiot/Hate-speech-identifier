@@ -1,9 +1,9 @@
                precision    recall  f1-score   support
 
-Non-Offensive       0.84      0.86      0.85       410
-    Offensive       0.92      0.96      0.94      1881
-  Hate Speech       0.59      0.17      0.27       140
+Non-Offensive       0.82      0.90      0.85       410
+    Offensive       0.92      0.97      0.95      1881
+  Hate Speech       0.00      0.00      0.00       140
 
      accuracy                           0.90      2431
-    macro avg       0.78      0.66      0.69      2431
- weighted avg       0.89      0.90      0.89      2431
+    macro avg       0.58      0.62      0.60      2431
+ weighted avg       0.85      0.90      0.88      2431

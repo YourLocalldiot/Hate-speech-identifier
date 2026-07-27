@@ -32,7 +32,7 @@ ASSETS = Path("assets")
 # Cleaning
 # =============================================================================
 
-def clean_text(text: str) -> str:
+def clean_text(text: str):
 
     text = text.lower()
 
@@ -90,12 +90,12 @@ def create_plots(df: pd.DataFrame):
 
     counts = df["class"].value_counts().sort_index()
 
-    plt.figure(figsize=(6,4))
+    plt.figure(figsize=(6, 4))
 
     counts.plot(kind="bar")
 
     plt.xticks(
-        [0,1,2],
+        [0, 1, 2],
         [
             "Non-Offensive",
             "Offensive",
@@ -117,7 +117,7 @@ def create_plots(df: pd.DataFrame):
 
     lengths = df["text"].str.split().apply(len)
 
-    plt.figure(figsize=(7,4))
+    plt.figure(figsize=(7, 4))
 
     plt.hist(lengths, bins=40)
 
@@ -184,10 +184,21 @@ def main():
 
     df = pd.read_csv(INPUT_FILE)
 
+    # -------------------------------------------------------------------------
+    # Preserve original row number in merged_dataset.csv
+    # -------------------------------------------------------------------------
+    df = df.reset_index(drop=True)
+    df["dataset_row"] = df.index
+
+    # -------------------------------------------------------------------------
+    # Clean text
+    # -------------------------------------------------------------------------
     df["text"] = df["text"].astype(str).apply(clean_text)
 
+    # Remove duplicate text while preserving dataset_row
     df = df.drop_duplicates(subset="text")
 
+    # Remove empty text
     df = df[df["text"] != ""]
 
     print_statistics(df)
@@ -210,7 +221,7 @@ def main():
 
     print(f"Validation : {len(valid):,}")
 
-    print(f"Test        : {len(test):,}")
+    print(f"Test       : {len(test):,}")
 
     print()
 

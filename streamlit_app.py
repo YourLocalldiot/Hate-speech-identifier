@@ -6,6 +6,7 @@ Streamlit Web Application
 
 from pathlib import Path
 import pickle
+import re
 
 import numpy as np
 import streamlit as st
@@ -27,6 +28,9 @@ st.set_page_config(
 MODEL_PATH = Path("models/hate_classifier.keras")
 TOKENIZER_PATH = Path("models/tokenizer.pkl")
 
+HATE_WORDS_PATH = Path("hate_words.txt")
+OFFENSIVE_WORDS_PATH = Path("offensive_words.txt")
+
 MAX_LENGTH = 100
 
 CLASS_NAMES = [
@@ -37,7 +41,7 @@ CLASS_NAMES = [
 
 
 # =============================================================================
-# Load Model
+# Load Resources
 # =============================================================================
 
 @st.cache_resource
@@ -51,8 +55,56 @@ def load_tokenizer():
         return pickle.load(f)
 
 
+@st.cache_resource
+def load_word_list(path: Path):
+
+    if not path.exists():
+        return set()
+
+    with open(path, "r", encoding="utf-8") as f:
+
+        return {
+            line.strip().lower()
+            for line in f
+            if line.strip()
+        }
+
+
 model = load_model()
 tokenizer = load_tokenizer()
+
+HATE_WORDS = load_word_list(HATE_WORDS_PATH)
+OFFENSIVE_WORDS = load_word_list(OFFENSIVE_WORDS_PATH)
+
+
+# =============================================================================
+# Detect Terms
+# =============================================================================
+
+def detect_terms(text: str):
+
+    words = re.findall(
+        r"[a-zA-Z']+",
+        text.lower()
+    )
+
+    detected_hate = sorted(
+        {
+            word
+            for word in words
+            if word in HATE_WORDS
+        }
+    )
+
+    detected_offensive = sorted(
+        {
+            word
+            for word in words
+            if word in OFFENSIVE_WORDS
+        }
+    )
+
+    return detected_hate, detected_offensive
 
 
 # =============================================================================
@@ -88,12 +140,12 @@ st.title("Hate Speech Detection")
 
 st.write(
     """
-    Detect whether a sentence is:
+Detect whether a sentence is:
 
-    - Non-Offensive
-    - Offensive
-    - Hate Speech
-    """
+- Non-Offensive
+- Offensive
+- Hate Speech
+"""
 )
 
 user_input = st.text_area(
@@ -129,5 +181,29 @@ if st.button("Classify"):
             st.progress(float(probabilities[i]))
 
             st.write(
-                f"{CLASS_NAMES[i]}: {probabilities[i]*100:.2f}%"
+                f"{CLASS_NAMES[i]}: {probabilities[i] * 100:.2f}%"
             )
+
+        # ==========================================================
+        # Detected Terms
+        # ==========================================================
+
+        hate_terms, offensive_terms = detect_terms(user_input)
+
+        st.subheader("Detected Terms")
+
+        if hate_terms:
+
+            st.error("Hate Terms")
+
+            st.write(", ".join(hate_terms))
+
+        if offensive_terms:
+
+            st.warning("Offensive Terms")
+
+            st.write(", ".join(offensive_terms))
+
+        if not hate_terms and not offensive_terms:
+
+            st.success("No offensive or hate terms detected.")
