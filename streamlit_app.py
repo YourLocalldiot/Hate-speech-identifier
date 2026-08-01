@@ -174,15 +174,52 @@ if st.button("Classify"):
         else:
             st.error(f"Prediction: **{label}**")
 
-        st.subheader("Confidence")
+        # ------------------------------------------------------------------
+        # Hate Severity Score  (0 = Normal, 100 = Hate Speech)
+        # score = P(offensive) * 50 + P(hate) * 100
+        # ------------------------------------------------------------------
+        score = float(probabilities[1]) * 50 + float(probabilities[2]) * 100
+        score = round(min(max(score, 0.0), 100.0), 1)
 
-        for i in range(3):
+        st.subheader("Hate Severity Score")
 
-            st.progress(float(probabilities[i]))
+        # Gradient meter rendered with HTML
+        bar_html = f"""
+        <div style="margin: 0.5rem 0 1.2rem 0;">
+            <div style="
+                background: linear-gradient(to right, #22c55e, #facc15, #ef4444);
+                border-radius: 8px;
+                height: 22px;
+                width: 100%;
+                position: relative;
+            ">
+                <div style="
+                    position: absolute;
+                    left: {score}%;
+                    top: 50%;
+                    transform: translate(-50%, -50%);
+                    width: 14px;
+                    height: 14px;
+                    border-radius: 50%;
+                    background: white;
+                    border: 2px solid #334155;
+                    box-shadow: 0 0 4px rgba(0,0,0,0.4);
+                "></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:#64748b; margin-top:4px;">
+                <span>0 — Normal</span>
+                <span>50 — Offensive</span>
+                <span>100 — Hate Speech</span>
+            </div>
+        </div>
+        """
+        st.markdown(bar_html, unsafe_allow_html=True)
+        st.markdown(f"**Score: {score:.1f} / 100**")
 
-            st.write(
-                f"{CLASS_NAMES[i]}: {probabilities[i] * 100:.2f}%"
-            )
+        with st.expander("Raw class probabilities"):
+            for i in range(3):
+                st.progress(float(probabilities[i]))
+                st.write(f"{CLASS_NAMES[i]}: {probabilities[i] * 100:.2f}%")
 
         # ==========================================================
         # Detected Terms
