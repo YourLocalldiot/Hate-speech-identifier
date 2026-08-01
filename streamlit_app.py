@@ -105,11 +105,22 @@ def predict(text):
 def explain_with_gemini(text: str, label: str, score: float, probabilities: list) -> str:
     """Ask Gemini to explain why the classifier assigned this label."""
 
-    load_dotenv(ENV_PATH, override=True)
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    # 1. Check Streamlit Secrets (for deployed apps on Streamlit Community Cloud)
+    api_key = ""
+    if "GEMINI_API_KEY" in st.secrets:
+        api_key = str(st.secrets["GEMINI_API_KEY"]).strip()
+
+    # 2. Fall back to environment variables / .env (for local development)
+    if not api_key:
+        load_dotenv(ENV_PATH, override=True)
+        api_key = os.getenv("GEMINI_API_KEY", "").strip()
 
     if not api_key:
-        return f"⚠️ Gemini API key not configured — could not find GEMINI_API_KEY in `{ENV_PATH}`."
+        return (
+            "⚠️ **Gemini API key not configured.**\n\n"
+            "- **On Streamlit Cloud:** Add `GEMINI_API_KEY = \"your_api_key\"` under **App Settings > Secrets**.\n"
+            "- **Locally:** Ensure `GEMINI_API_KEY` is set in your `.env` file."
+        )
 
     if not HAS_GENAI:
         return "⚠️ `google-genai` library is not installed."
