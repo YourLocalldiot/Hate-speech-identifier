@@ -9,10 +9,22 @@ from pathlib import Path
 import pickle
 
 from dotenv import load_dotenv
-import google.generativeai as genai
 import numpy as np
 import streamlit as st
 import tensorflow as tf
+
+# Patch system certs for requests/SSL handling on Windows if available
+try:
+    import pip_system_certs.wrapt_requests  # noqa: F401
+except ImportError:
+    pass
+
+try:
+    from google import genai
+    from google.genai import errors as genai_errors
+    HAS_GENAI = True
+except ImportError:
+    HAS_GENAI = False
 
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
@@ -21,7 +33,8 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 # Configuration
 # =============================================================================
 
-load_dotenv(Path(__file__).parent / ".env")
+ENV_PATH = Path(__file__).parent / ".env"
+load_dotenv(ENV_PATH, override=True)
 
 st.set_page_config(
     page_title="Hate Speech Classifier",
@@ -40,11 +53,6 @@ CLASS_NAMES = [
     "Hate Speech",
 ]
 
-# Configure Gemini
-_gemini_key = os.getenv("GEMINI_API_KEY", "")
-if _gemini_key:
-    genai.configure(api_key=_gemini_key)
-
 
 # =============================================================================
 # Load Resources
@@ -61,16 +69,8 @@ def load_tokenizer():
         return pickle.load(f)
 
 
-@st.cache_resource
-def load_gemini():
-    if not _gemini_key:
-        return None
-    return genai.GenerativeModel("gemini-2.0-flash")
-
-
 model = load_model()
 tokenizer = load_tokenizer()
-gemini = load_gemini()
 
 
 # =============================================================================
@@ -105,8 +105,19 @@ def predict(text):
 def explain_with_gemini(text: str, label: str, score: float, probabilities: list) -> str:
     """Ask Gemini to explain why the classifier assigned this label."""
 
-    if gemini is None:
-        return "⚠️ Gemini API key not configured."
+    load_dotenv(ENV_PATH, override=True)
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+
+    if not api_key:
+        return f"⚠️ Gemini API key not configured — could not find GEMINI_API_KEY in `{ENV_PATH}`."
+
+    if not HAS_GENAI:
+        return "⚠️ `google-genai` library is not installed."
+
+    try:
+        client = genai.Client(api_key=api_key)
+    except Exception as e:
+        return f"⚠️ Error initializing Gemini client: {e}"
 
     prob_lines = "\n".join(
         f"  - {CLASS_NAMES[i]}: {probabilities[i] * 100:.1f}%"
@@ -134,10 +145,17 @@ Cover:
 Be concise, plain-spoken, and educational. Do NOT repeat the score or raw probabilities in your answer."""
 
     try:
-        response = gemini.generate_content(prompt)
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
         return response.text
+    except genai_errors.APIError as e:
+        if getattr(e, "code", None) == 429 or "RESOURCE_EXHAUSTED" in str(e):
+            return "⏳ **Gemini API Rate Limit Reached (429):** You have exceeded the free tier quota for `gemini-2.0-flash`. Please wait ~1 minute and try again."
+        return f"⚠️ Gemini API Error ({e.code if hasattr(e, 'code') else 'APIError'}): {e.message if hasattr(e, 'message') else e}"
     except Exception as e:
-        return f"⚠️ Gemini API error: {e}"
+        return f"⚠️ Unexpected error calling Gemini: {e}"
 
 
 # =============================================================================
