@@ -155,18 +155,30 @@ Cover:
 
 Be concise, plain-spoken, and educational. Do NOT repeat the score or raw probabilities in your answer."""
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt,
-        )
-        return response.text
-    except genai_errors.APIError as e:
-        if getattr(e, "code", None) == 429 or "RESOURCE_EXHAUSTED" in str(e):
-            return "⏳ **Gemini API Rate Limit Reached (429):** You have exceeded the free tier quota for `gemini-2.0-flash`. Please wait ~1 minute and try again."
-        return f"⚠️ Gemini API Error ({e.code if hasattr(e, 'code') else 'APIError'}): {e.message if hasattr(e, 'message') else e}"
-    except Exception as e:
-        return f"⚠️ Unexpected error calling Gemini: {e}"
+    # Attempt primary model, falling back to gemini-1.5-flash if 429 rate limit occurs
+    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash"]
+    last_error = None
+
+    for model_name in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+            )
+            return response.text
+        except genai_errors.APIError as e:
+            last_error = e
+            if getattr(e, "code", None) == 429 or "RESOURCE_EXHAUSTED" in str(e):
+                continue  # Try fallback model
+            return f"⚠️ Gemini API Error ({getattr(e, 'code', 'APIError')}): {getattr(e, 'message', e)}"
+        except Exception as e:
+            return f"⚠️ Unexpected error calling Gemini: {e}"
+
+    # If all models hit rate limit 429
+    if last_error and (getattr(last_error, "code", None) == 429 or "RESOURCE_EXHAUSTED" in str(last_error)):
+        return "⏳ **Gemini Free Tier Quota Exceeded (429):** Both `gemini-2.0-flash` and `gemini-1.5-flash` have reached their free rate limit. Please wait ~1 minute and try again."
+
+    return f"⚠️ Error calling Gemini API: {last_error}"
 
 
 # =============================================================================
