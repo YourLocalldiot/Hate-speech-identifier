@@ -21,7 +21,7 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 # Configuration
 # =============================================================================
 
-load_dotenv()
+load_dotenv(Path(__file__).parent / ".env")
 
 st.set_page_config(
     page_title="Hate Speech Classifier",
