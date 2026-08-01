@@ -1,0 +1,23 @@
+# Environment / secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Models (large binary files)
+models/
+
+# Datasets (large files)
+datasets/raw/
+datasets/splits/
+
+# Assets / generated outputs
+assets/
+
+# Virtual environments
+.venv/
+venv/
+env/

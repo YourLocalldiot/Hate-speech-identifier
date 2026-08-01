@@ -4,9 +4,12 @@ Phase 6
 Streamlit Web Application
 """
 
+import os
 from pathlib import Path
 import pickle
 
+from dotenv import load_dotenv
+import google.generativeai as genai
 import numpy as np
 import streamlit as st
 import tensorflow as tf
@@ -17,6 +20,8 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 # =============================================================================
 # Configuration
 # =============================================================================
+
+load_dotenv()
 
 st.set_page_config(
     page_title="Hate Speech Classifier",
@@ -35,6 +40,11 @@ CLASS_NAMES = [
     "Hate Speech",
 ]
 
+# Configure Gemini
+_gemini_key = os.getenv("GEMINI_API_KEY", "")
+if _gemini_key:
+    genai.configure(api_key=_gemini_key)
+
 
 # =============================================================================
 # Load Resources
@@ -51,8 +61,16 @@ def load_tokenizer():
         return pickle.load(f)
 
 
+@st.cache_resource
+def load_gemini():
+    if not _gemini_key:
+        return None
+    return genai.GenerativeModel("gemini-2.0-flash")
+
+
 model = load_model()
 tokenizer = load_tokenizer()
+gemini = load_gemini()
 
 
 # =============================================================================
@@ -81,6 +99,48 @@ def predict(text):
 
 
 # =============================================================================
+# Gemini Explanation
+# =============================================================================
+
+def explain_with_gemini(text: str, label: str, score: float, probabilities: list) -> str:
+    """Ask Gemini to explain why the classifier assigned this label."""
+
+    if gemini is None:
+        return "⚠️ Gemini API key not configured."
+
+    prob_lines = "\n".join(
+        f"  - {CLASS_NAMES[i]}: {probabilities[i] * 100:.1f}%"
+        for i in range(3)
+    )
+
+    prompt = f"""You are a content moderation expert helping users understand an AI hate-speech classifier.
+
+A Bidirectional LSTM model (trained on the Davidson et al. Twitter hate-speech dataset) has analysed the following text:
+
+Text: "{text}"
+
+Classification result:
+  - Label: {label}
+  - Hate Severity Score: {score:.1f} / 100  (0 = Normal, 50 = Offensive, 100 = Hate Speech)
+  - Raw class probabilities:
+{prob_lines}
+
+Please explain IN 3–5 SHORT BULLET POINTS why the model likely assigned this result.
+Cover:
+1. Which specific words or phrases likely triggered the classification
+2. Whether the result seems accurate or potentially wrong (with reasoning)
+3. Any nuance or context that might affect the label
+
+Be concise, plain-spoken, and educational. Do NOT repeat the score or raw probabilities in your answer."""
+
+    try:
+        response = gemini.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"⚠️ Gemini API error: {e}"
+
+
+# =============================================================================
 # Interface
 # =============================================================================
 
@@ -100,6 +160,9 @@ Detect whether a sentence is:
 if "result" not in st.session_state:
     st.session_state.result = None
 
+if "explanation" not in st.session_state:
+    st.session_state.explanation = None
+
 user_input = st.text_area(
     "Enter a sentence",
     height=150,
@@ -114,6 +177,9 @@ if st.button("Classify"):
     else:
 
         prediction, probabilities = predict(user_input)
+
+        # Clear old explanation when a new classification is run
+        st.session_state.explanation = None
 
         # Store in session state so results remain visible after re-render
         st.session_state.result = {
@@ -185,3 +251,21 @@ if st.session_state.result is not None:
         for i in range(3):
             st.progress(float(probabilities[i]))
             st.write(f"{CLASS_NAMES[i]}: {probabilities[i] * 100:.2f}%")
+
+    # ------------------------------------------------------------------
+    # Gemini Explanation
+    # ------------------------------------------------------------------
+    st.divider()
+
+    if st.button("✨ Explain with Gemini"):
+        with st.spinner("Asking Gemini..."):
+            st.session_state.explanation = explain_with_gemini(
+                text=r["text"],
+                label=label,
+                score=score,
+                probabilities=probabilities,
+            )
+
+    if st.session_state.explanation:
+        st.subheader("Gemini Explanation")
+        st.markdown(st.session_state.explanation)

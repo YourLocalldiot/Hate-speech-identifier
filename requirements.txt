@@ -7,3 +7,5 @@ scikit-learn
 streamlit
 joblib
 tqdm
+google-generativeai
+python-dotenv
