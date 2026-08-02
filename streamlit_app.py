@@ -13,18 +13,11 @@ import numpy as np
 import streamlit as st
 import tensorflow as tf
 
-# Patch system certs for requests/SSL handling on Windows if available
 try:
-    import pip_system_certs.wrapt_requests  # noqa: F401
+    from openai import OpenAI
+    HAS_OPENAI = True
 except ImportError:
-    pass
-
-try:
-    from google import genai
-    from google.genai import errors as genai_errors
-    HAS_GENAI = True
-except ImportError:
-    HAS_GENAI = False
+    HAS_OPENAI = False
 
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
@@ -99,36 +92,39 @@ def predict(text):
 
 
 # =============================================================================
-# Gemini Explanation
+# OpenRouter Explanation
 # =============================================================================
 
-def explain_with_gemini(text: str, label: str, score: float, probabilities: list) -> str:
-    """Ask Gemini to explain why the classifier assigned this label."""
+def explain_with_openrouter(text: str, label: str, score: float, probabilities: list) -> str:
+    """Ask OpenRouter (e.g. google/gemini-2.0-flash-001 or meta-llama/llama-3.3-70b-instruct) to explain why the classifier assigned this label."""
 
     # 1. Check Streamlit Secrets (for deployed apps on Streamlit Community Cloud)
     api_key = ""
-    if "GEMINI_API_KEY" in st.secrets:
-        api_key = str(st.secrets["GEMINI_API_KEY"]).strip()
+    if "OPENROUTER_API_KEY" in st.secrets:
+        api_key = str(st.secrets["OPENROUTER_API_KEY"]).strip()
 
     # 2. Fall back to environment variables / .env (for local development)
     if not api_key:
         load_dotenv(ENV_PATH, override=True)
-        api_key = os.getenv("GEMINI_API_KEY", "").strip()
+        api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
 
     if not api_key:
         return (
-            "⚠️ **Gemini API key not configured.**\n\n"
-            "- **On Streamlit Cloud:** Add `GEMINI_API_KEY = \"your_api_key\"` under **App Settings > Secrets**.\n"
-            "- **Locally:** Ensure `GEMINI_API_KEY` is set in your `.env` file."
+            "⚠️ **OpenRouter API key not configured.**\n\n"
+            "- **On Streamlit Cloud:** Add `OPENROUTER_API_KEY = \"your_api_key\"` under **App Settings > Secrets**.\n"
+            "- **Locally:** Ensure `OPENROUTER_API_KEY` is set in your `.env` file."
         )
 
-    if not HAS_GENAI:
-        return "⚠️ `google-genai` library is not installed."
+    if not HAS_OPENAI:
+        return "⚠️ `openai` library is not installed."
 
     try:
-        client = genai.Client(api_key=api_key)
+        client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+        )
     except Exception as e:
-        return f"⚠️ Error initializing Gemini client: {e}"
+        return f"⚠️ Error initializing OpenRouter client: {e}"
 
     prob_lines = "\n".join(
         f"  - {CLASS_NAMES[i]}: {probabilities[i] * 100:.1f}%"
@@ -155,30 +151,31 @@ Cover:
 
 Be concise, plain-spoken, and educational. Do NOT repeat the score or raw probabilities in your answer."""
 
-    # Attempt primary model, falling back to gemini-1.5-flash if 429 rate limit occurs
-    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash"]
+    models_to_try = [
+        "meta-llama/llama-3.3-70b-instruct",
+        "google/gemini-2.0-flash-exp:free",
+        "deepseek/deepseek-r1-distill-llama-70b",
+    ]
     last_error = None
 
     for model_name in models_to_try:
         try:
-            response = client.models.generate_content(
+            response = client.chat.completions.create(
                 model=model_name,
-                contents=prompt,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                extra_headers={
+                    "HTTP-Referer": "https://streamlit.io",
+                    "X-Title": "Hate Speech Identifier",
+                }
             )
-            return response.text
-        except genai_errors.APIError as e:
-            last_error = e
-            if getattr(e, "code", None) == 429 or "RESOURCE_EXHAUSTED" in str(e):
-                continue  # Try fallback model
-            return f"⚠️ Gemini API Error ({getattr(e, 'code', 'APIError')}): {getattr(e, 'message', e)}"
+            return response.choices[0].message.content
         except Exception as e:
-            return f"⚠️ Unexpected error calling Gemini: {e}"
+            last_error = e
+            continue
 
-    # If all models hit rate limit 429
-    if last_error and (getattr(last_error, "code", None) == 429 or "RESOURCE_EXHAUSTED" in str(last_error)):
-        return "⏳ **Gemini Free Tier Quota Exceeded (429):** Both `gemini-2.0-flash` and `gemini-1.5-flash` have reached their free rate limit. Please wait ~1 minute and try again."
-
-    return f"⚠️ Error calling Gemini API: {last_error}"
+    return f"⚠️ OpenRouter API Error: {last_error}"
 
 
 # =============================================================================
@@ -294,13 +291,13 @@ if st.session_state.result is not None:
             st.write(f"{CLASS_NAMES[i]}: {probabilities[i] * 100:.2f}%")
 
     # ------------------------------------------------------------------
-    # Gemini Explanation
+    # AI Explanation (OpenRouter)
     # ------------------------------------------------------------------
     st.divider()
 
-    if st.button("✨ Explain with Gemini"):
-        with st.spinner("Asking Gemini..."):
-            st.session_state.explanation = explain_with_gemini(
+    if st.button("✨ Explain with AI"):
+        with st.spinner("Analyzing with AI..."):
+            st.session_state.explanation = explain_with_openrouter(
                 text=r["text"],
                 label=label,
                 score=score,
@@ -308,5 +305,5 @@ if st.session_state.result is not None:
             )
 
     if st.session_state.explanation:
-        st.subheader("Gemini Explanation")
+        st.subheader("AI Explanation")
         st.markdown(st.session_state.explanation)
